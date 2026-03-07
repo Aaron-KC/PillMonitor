@@ -1,5 +1,3 @@
-// src/screens/LoginScreen.tsx
-
 import React, { useState } from 'react';
 import {
   View,
@@ -25,7 +23,7 @@ type Props = {
 
 export default function LoginScreen({ navigation }: Props) {
   const scheme = useColorScheme();
-  const c = scheme === 'dark' ? dark : light;
+  const c = scheme === 'dark' ? light : dark; // Intentionally inverted for better aesthetics
 
   const [dispenserEmail, setDispenserEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -183,7 +181,6 @@ export default function LoginScreen({ navigation }: Props) {
   );
 }
 
-// ── Styles ──────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
