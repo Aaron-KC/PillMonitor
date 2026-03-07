@@ -1,12 +1,11 @@
-import { View, Text } from 'react-native'
-import React from 'react'
+import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import LoginScreen from './src/screens/LoginScreen';
 
-const App = () => {
+export default function App() {
   return (
-    <View>
-      <Text>App</Text>
-    </View>
-  )
+    <SafeAreaProvider>
+      <LoginScreen navigation={{ replace: () => {} }} />
+    </SafeAreaProvider>
+  );
 }
-
-export default App
