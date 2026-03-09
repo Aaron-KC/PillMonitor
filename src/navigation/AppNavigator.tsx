@@ -1,9 +1,9 @@
 import React from 'react';
-import { useColorScheme } from 'react-native';
+import { ActivityIndicator, useColorScheme } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { LayoutDashboard } from 'lucide-react-native';
+import { LayoutDashboard, View } from 'lucide-react-native';
 
 import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -11,6 +11,7 @@ import AddPillScreen from '../screens/AddPillScreen';
 
 import { light, dark } from '../constants/colors';
 import { RootStackParamList, TabParamList } from '../types.ts';
+import { useAuth } from '../hooks/useAuth.ts';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -18,7 +19,6 @@ const Tab = createBottomTabNavigator<TabParamList>();
 function MainTabs() {
   const scheme = useColorScheme();
   const c = scheme === 'dark' ? light : dark; // Intentionally inverted for better aesthetics
-
   return (
     <Tab.Navigator
       screenOptions={{
@@ -50,8 +50,17 @@ function MainTabs() {
 }
 
 export default function AppNavigator() {
+  const {user, initializing} = useAuth();
   const scheme = useColorScheme();
-  const c = scheme === 'dark' ? light : dark; // Intentionally inverted for better aesthetics
+  const c = scheme === 'dark' ? light : dark;
+
+  if (initializing) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.background }}>
+        <ActivityIndicator size="large" color={c.primary} />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer>
@@ -60,24 +69,29 @@ export default function AppNavigator() {
           headerShown: false,
           contentStyle: { backgroundColor: c.background },
         }}>
-        <Stack.Screen
-          name="Login"
-          component={LoginScreen}
-          options={{ gestureEnabled: false }}
-        />
-        <Stack.Screen
-          name="MainTabs"
-          component={MainTabs}
-          options={{ gestureEnabled: false }}
-        />
-        <Stack.Screen
-          name="AddPill"
-          component={AddPillScreen}
-          options={{
-            presentation: 'modal',
-            gestureEnabled: true,
-          }}
-        />
+        {user ? (
+          <>
+            <Stack.Screen
+              name="MainTabs"
+              component={MainTabs}
+              options={{ gestureEnabled: false }}
+            />
+            <Stack.Screen
+              name="AddPill"
+              component={AddPillScreen}
+              options={{
+                presentation: 'modal',
+                gestureEnabled: true,
+              }}
+            />
+          </>
+        ) : (
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ gestureEnabled: false }}
+          />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
