@@ -12,10 +12,12 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   useColorScheme,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Mail, Lock, Eye, EyeOff, Pill } from 'lucide-react-native';
 import { light, dark } from '../constants/colors';
+import { login } from '../services/auth';
 
 type Props = {
   navigation: any;
@@ -35,13 +37,21 @@ export default function LoginScreen({ navigation }: Props) {
   const canSubmit =
     dispenserEmail.trim().length > 0 && password.trim().length > 0;
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!canSubmit) return;
     Keyboard.dismiss();
-    setLoading(true);
-    setTimeout(() => {
+
+    try {
+      setLoading(true);
+  
+      await login(dispenserEmail, password);
+      navigation.replace("MainTabs")
+    } catch (error: any) {
+      console.error('Login error:', error.message);
+      Alert.alert('Login Failed', error?.message || 'An unexpected error occurred. Please try again.');
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   return (

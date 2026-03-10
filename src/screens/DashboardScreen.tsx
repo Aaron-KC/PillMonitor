@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -16,40 +16,25 @@ import {
   BatteryMedium,
   Plus,
   AlertTriangle,
+  Activity,
+  CalendarClock,
 } from 'lucide-react-native';
 import { light, dark } from '../constants/colors';
+import { subscribeToMedications } from '../services/firestore';
+import { StatusOverlay } from '../components/StatusOverlay';
+import { getAuth } from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import { formatTimestamp } from '../utils/time';
+
 
 type Medicine = {
   id: string;
   name: string;
-  dosage: string;
   stock: { total: number; remaining: number };
-  schedule: string[];
+  schedule: { hour: number; minute: number; formatted: string }[];
+  startDate: any;
 };
 
-const MEDICINES: Medicine[] = [
-  {
-    id: 'med_01',
-    name: 'Amlodipine',
-    dosage: '5 mg',
-    stock: { total: 40, remaining: 20 },
-    schedule: ['08:00 AM', '08:00 PM'],
-  },
-  {
-    id: 'med_02',
-    name: 'Metformin',
-    dosage: '500 mg',
-    stock: { total: 30, remaining: 8 },
-    schedule: ['01:00 PM'],
-  },
-];
-
-const DEVICE = {
-  lastSync: '6:30 PM',
-  isDoorOpen: false,
-  battery: 78,
-  patientName: 'John',
-};
 
 type Props = {
   navigation: any;
@@ -76,10 +61,17 @@ function StatCard({
   c: typeof light;
 }) {
   return (
-    <View style={[statStyles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+    <View
+      style={[
+        statStyles.card,
+        { backgroundColor: c.card, borderColor: c.border },
+      ]}
+    >
       {icon}
       <Text style={[statStyles.label, { color: c.muted }]}>{label}</Text>
-      <Text style={[statStyles.value, { color: valueColor ?? c.text }]}>{value}</Text>
+      <Text style={[statStyles.value, { color: valueColor ?? c.text }]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -106,38 +98,79 @@ const statStyles = StyleSheet.create({
   },
 });
 
+const getEffectiveStatus = (startDate: any) => {
+  const start = startDate?.seconds
+    ? new Date(startDate.seconds * 1000)
+    : new Date(startDate);
+
+  const now = new Date();
+
+  const startMidnight = new Date(start.setHours(0, 0, 0, 0));
+  const nowMidnight = new Date(now.setHours(0, 0, 0, 0));
+
+  if (startMidnight > nowMidnight) {
+    const formatted = start.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
+    return { label: `Starts ${formatted}`, active: false };
+  }
+
+  return { label: 'Active Course', active: true };
+};
+
 function MedCard({ med, c }: { med: Medicine; c: typeof light }) {
+  const status = getEffectiveStatus(med.startDate);
   const ratio = med.stock.remaining / med.stock.total;
   const isLow = ratio < 0.3;
   const barColor = isLow ? c.danger : c.primary;
   const pct = Math.round(ratio * 100);
 
   return (
-    <View style={[medStyles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+    <View
+      style={[
+        medStyles.card,
+        { backgroundColor: c.card, borderColor: c.border },
+      ]}
+    >
+      <View style={medStyles.statusHeader}>
+        {status.active ? (
+          <Activity size={12} color={c.success} strokeWidth={2.5} />
+        ) : (
+          <CalendarClock size={12} color="#D97706" strokeWidth={2.5} />
+        )}
 
+        <Text
+          style={[
+            medStyles.statusText,
+            { color: status.active ? c.success : '#D97706' },
+          ]}
+        >
+          {status.label}
+        </Text>
+      </View>
       <View style={medStyles.topRow}>
         <View style={{ flex: 1 }}>
-
           <View style={medStyles.nameRow}>
             <Text style={[medStyles.name, { color: c.text }]}>{med.name}</Text>
-            <View style={[medStyles.dosageBadge, { backgroundColor: c.primary + '18' }]}>
-              <Text style={[medStyles.dosageText, { color: c.primary }]}>
-                {med.dosage}
-              </Text>
-            </View>
           </View>
 
           <View style={medStyles.chipsRow}>
             {med.schedule.map(t => (
               <View
-                key={t}
-                style={[medStyles.chip, { backgroundColor: c.inputBg, borderColor: c.border }]}>
+                key={t.formatted}
+                style={[
+                  medStyles.chip,
+                  { backgroundColor: c.inputBg, borderColor: c.border },
+                ]}
+              >
                 <Clock size={11} color={c.muted} strokeWidth={2} />
-                <Text style={[medStyles.chipText, { color: c.subtext }]}>{t}</Text>
+                <Text style={[medStyles.chipText, { color: c.subtext }]}>
+                  {t.formatted}
+                </Text>
               </View>
             ))}
           </View>
-
         </View>
 
         <View style={medStyles.stockCol}>
@@ -160,7 +193,9 @@ function MedCard({ med, c }: { med: Medicine; c: typeof light }) {
           {med.stock.remaining} of {med.stock.total} pills remaining
         </Text>
         {isLow && (
-          <View style={[medStyles.lowBadge, { backgroundColor: c.danger + '18' }]}>
+          <View
+            style={[medStyles.lowBadge, { backgroundColor: c.danger + '18' }]}
+          >
             <AlertTriangle size={11} color={c.danger} strokeWidth={2.5} />
             <Text style={[medStyles.lowText, { color: c.danger }]}>Low</Text>
           </View>
@@ -175,7 +210,6 @@ function MedCard({ med, c }: { med: Medicine; c: typeof light }) {
           ]}
         />
       </View>
-
     </View>
   );
 }
@@ -187,6 +221,20 @@ const medStyles = StyleSheet.create({
     padding: 18,
     marginBottom: 12,
     gap: 12,
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   topRow: {
     flexDirection: 'row',
@@ -291,16 +339,79 @@ export default function DashboardScreen({ navigation }: Props) {
   const c = scheme === 'dark' ? light : dark; // Intentionally inverted for better aesthetics
 
   const [refreshing, setRefreshing] = useState(false);
+  const [medicines, setMedicines] = useState<Medicine[]>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [deviceStatus, setDeviceStatus] = useState({
+  lastSync: '---',
+  isDoorOpen: false,
+  battery: 0,
+  patientName: 'User',
+});
+
+useEffect(() => {
+  const user = getAuth().currentUser;
+  if (!user) return;
+
+  const unsubscribe = firestore()
+    .collection('devices')
+    .doc(user.uid) 
+    .onSnapshot(querySnapshot => {
+         const data = querySnapshot.data();
+         if (!data) return;
+
+         setDeviceStatus({
+           lastSync: data.lastSync ? formatTimestamp(data.lastSync) : '---',
+           isDoorOpen: data.isDoorOpen || false,
+           battery: data.battery || 0,
+           patientName: data.patientName || 'User',
+         });
+       }, error => {
+         console.error('Error fetching device status:', error);
+       });
+  
+  return () => unsubscribe();
+}, []);
+
+  const loadData = () => {
+    setError(null);
+    setLoading(true);
+
+    return subscribeToMedications(
+      meds => {
+        setMedicines(meds);
+        setLoading(false);
+      },
+      err => {
+        setLoading(false);
+        setError(
+          "We couldn't load your medications. Check your internet connection or Firestore rules.",
+        );
+      },
+    );
+  };
+
+  useEffect(() => {
+    const unsubscribe = loadData();
+    return () => unsubscribe();
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
-    // TODO: re-fetch from Firestore
     setTimeout(() => setRefreshing(false), 1000);
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: c.background }]} edges={['top']}>
-
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: c.background }]}
+      edges={['top']}
+    >
+      <StatusOverlay
+        loading={loading}
+        error={error}
+        onRetry={loadData}
+        c={c}
+      />
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -310,16 +421,18 @@ export default function DashboardScreen({ navigation }: Props) {
             onRefresh={onRefresh}
             tintColor={c.primary}
           />
-        }>
-
+        }
+      >
         <View style={styles.header}>
           <View>
             <Text style={[styles.greeting, { color: c.muted }]}>
-              {getGreeting()}, {DEVICE.patientName}
+              {`${getGreeting()}, ${deviceStatus.patientName}`}
             </Text>
             <Text style={[styles.title, { color: c.text }]}>Dashboard</Text>
           </View>
-          <View style={[styles.liveBadge, { backgroundColor: c.success + '18' }]}>
+          <View
+            style={[styles.liveBadge, { backgroundColor: c.success + '18' }]}
+          >
             <Text style={[styles.liveText, { color: c.success }]}>Live</Text>
           </View>
         </View>
@@ -329,25 +442,27 @@ export default function DashboardScreen({ navigation }: Props) {
             c={c}
             icon={<Clock size={18} color={c.primary} strokeWidth={2} />}
             label="Last Sync"
-            value={DEVICE.lastSync}
+            value={deviceStatus?.lastSync ? deviceStatus.lastSync : '---'}
           />
           <StatCard
             c={c}
             icon={
-              DEVICE.isDoorOpen
-                ? <LockOpen size={18} color={c.danger} strokeWidth={2} />
-                : <Lock size={18} color={c.success} strokeWidth={2} />
+              deviceStatus.isDoorOpen ? (
+                <LockOpen size={18} color={c.danger} strokeWidth={2} />
+              ) : (
+                <Lock size={18} color={c.success} strokeWidth={2} />
+              )
             }
             label="Dispenser"
-            value={DEVICE.isDoorOpen ? 'Open' : 'Secure'}
-            valueColor={DEVICE.isDoorOpen ? c.danger : c.success}
+            value={deviceStatus.isDoorOpen ? 'Open' : 'Secure'}
+            valueColor={deviceStatus.isDoorOpen ? c.danger : c.success}
           />
           <StatCard
             c={c}
             icon={<BatteryMedium size={18} color={c.primary} strokeWidth={2} />}
             label="Battery"
-            value={`${DEVICE.battery}%`}
-            valueColor={DEVICE.battery < 20 ? c.danger : undefined}
+            value={`${deviceStatus.battery}%`}
+            valueColor={deviceStatus.battery < 20 ? c.danger : undefined}
           />
         </View>
 
@@ -355,19 +470,18 @@ export default function DashboardScreen({ navigation }: Props) {
           Active Medications
         </Text>
 
-        {MEDICINES.map(med => (
-          <MedCard key={med.id} med={med} c={c} />
-        ))}
-
+        {medicines &&
+          medicines?.length > 0 &&
+          medicines.map(med => <MedCard key={med.id} med={med} c={c} />)}
       </ScrollView>
 
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: c.primary }]}
         onPress={() => navigation.navigate('AddPill')}
-        activeOpacity={0.85}>
+        activeOpacity={0.85}
+      >
         <Plus size={26} color="#fff" strokeWidth={2.5} />
       </TouchableOpacity>
-
     </SafeAreaView>
   );
 }
@@ -381,7 +495,6 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 110,
   },
-
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
