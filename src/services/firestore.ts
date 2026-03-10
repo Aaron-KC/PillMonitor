@@ -1,5 +1,5 @@
 import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import {getAuth} from '@react-native-firebase/auth';
 
 export interface MedicationSchedule {
   hour: number;
@@ -16,7 +16,7 @@ export interface MedicationData {
 }
 
 export const addMedicationToFirestore = async (data: MedicationData) => {
-  const user = auth().currentUser;
+  const user = getAuth().currentUser;
 
   if (!user) throw new Error('AUTH_REQUIRED');
 
@@ -28,8 +28,10 @@ export const addMedicationToFirestore = async (data: MedicationData) => {
 
     return await medicationsRef.add({
       name: data.name,
-      totalStock: data.totalStock,
-      remainingStock: data.totalStock,
+      stock: {
+         total: data.totalStock,
+         remaining: data.totalStock,
+      },
       schedule: data.schedule,
       startDate: firestore.Timestamp.fromDate(data.startDate),
       createdAt: firestore.FieldValue.serverTimestamp(),
@@ -38,5 +40,43 @@ export const addMedicationToFirestore = async (data: MedicationData) => {
   } catch (error: any) {
     console.error('Firestore Error:', error);
     throw new Error(error.code || 'UNKNOWN_ERROR');
+  }
+};
+export const subscribeToMedications = (
+  onUpdate: (data: any[]) => void,
+  onError: (error: Error) => void 
+) => {
+  try {
+    const user = getAuth().currentUser;
+    
+    if (!user) {
+      throw new Error('AUTH_REQUIRED');
+    }
+
+    return firestore()
+      .collection('users')
+      .doc(user.uid)
+      .collection('medications')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        (querySnapshot) => {
+          if (!querySnapshot) return;
+
+          const meds = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+          
+          onUpdate(meds);
+        },
+        (error) => {
+          console.error("Firestore Streaming Error:", error);
+          onError(error);
+        }
+      );
+  } catch (error: any) {
+    console.error("Subscription Setup Error:", error);
+    onError(error);
+    return () => {}; 
   }
 };
