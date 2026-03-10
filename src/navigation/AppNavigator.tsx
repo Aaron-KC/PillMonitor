@@ -54,6 +54,8 @@ export default function AppNavigator() {
   const scheme = useColorScheme();
   const c = scheme === 'dark' ? light : dark;
 
+  console.log(user);
+
   if (initializing) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.background }}>

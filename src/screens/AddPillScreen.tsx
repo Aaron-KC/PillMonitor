@@ -1,5 +1,3 @@
-// src/screens/AddPillScreen.tsx
-
 import React, { useState } from 'react';
 import {
   View,
@@ -14,6 +12,8 @@ import {
   useColorScheme,
   Keyboard,
   TouchableWithoutFeedback,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, {
@@ -30,6 +30,10 @@ import {
   Check,
 } from 'lucide-react-native';
 import { light, dark } from '../constants/colors';
+import {
+  addMedicationToFirestore,
+  MedicationData,
+} from '../services/firestore';
 
 type Props = {
   navigation: any;
@@ -54,7 +58,6 @@ function formatDate(date: Date): string {
 export default function AddPillScreen({ navigation }: Props) {
   const scheme = useColorScheme();
   const c = scheme === 'dark' ? light : dark; // Intentionally inverted for better aesthetics
-  
 
   const [name, setName] = useState('');
   const [totalStock, setTotalStock] = useState('');
@@ -69,9 +72,10 @@ export default function AddPillScreen({ navigation }: Props) {
   const [tempTime, setTempTime] = useState(new Date());
   const [tempDate, setTempDate] = useState(new Date());
 
-
   const [nameFocused, setNameFocused] = useState(false);
   const [stockFocused, setStockFocused] = useState(false);
+
+  const [isSaving, setIsSaving] = useState(false);
 
   const openAddTime = () => {
     setTempTime(new Date());
@@ -100,29 +104,56 @@ export default function AddPillScreen({ navigation }: Props) {
   const removeTime = (index: number) => {
     setSchedule(prev => prev.filter((_, i) => i !== index));
   };
-
-  const handleSave = () => {
-    if (!isFormValid) return;
-    Keyboard.dismiss();
-    //  save to Firestore 
-    navigation.goBack();
-  };
-
-
   const isFormValid =
     name.trim().length > 0 &&
     totalStock.trim().length > 0 &&
     schedule.length > 0 &&
     (isFromToday || startDate !== null);
 
+  const handleSave = async () => {
+    if (!isFormValid) return;
+
+    setIsSaving(true);
+
+    try {
+      const finalStartDate = isFromToday ? new Date() : startDate || new Date();
+
+      const pillData: MedicationData = {
+        name: name.trim(),
+        totalStock: parseInt(totalStock, 10),
+        startDate: finalStartDate,
+        isFromToday,
+        schedule: schedule.map(d => ({
+          hour: d.getHours(),
+          minute: d.getMinutes(), 
+          formatted: formatTime(d),
+        })),
+      };
+
+      console.log(pillData);
+
+      await addMedicationToFirestore(pillData);
+
+      navigation.goBack();
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert(
+        'Save Failed',
+        'Could not save medication. Please check your connection.',
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: c.background }]}>
-
       <View style={[styles.navBar, { borderBottomColor: c.border }]}>
         <TouchableOpacity
           style={styles.backBtn}
           onPress={() => navigation.goBack()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <ChevronLeft size={22} color={c.primary} strokeWidth={2.5} />
           <Text style={[styles.backText, { color: c.primary }]}>Back</Text>
         </TouchableOpacity>
@@ -132,25 +163,33 @@ export default function AddPillScreen({ navigation }: Props) {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
             contentContainerStyle={styles.scroll}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled">
-
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={[styles.sectionLabel, { color: c.muted }]}>
               Medication Details
             </Text>
-            <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
-
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: c.card, borderColor: c.border },
+              ]}
+            >
               <Text style={[styles.fieldLabel, { color: c.subtext }]}>
                 Medicine Name
               </Text>
               <TextInput
                 style={[
                   styles.fieldInput,
-                  { color: c.text, borderBottomColor: nameFocused ? c.primary : c.border },
+                  {
+                    color: c.text,
+                    borderBottomColor: nameFocused ? c.primary : c.border,
+                  },
                 ]}
                 placeholder="e.g. Amlodipine"
                 placeholderTextColor={c.muted}
@@ -161,14 +200,18 @@ export default function AddPillScreen({ navigation }: Props) {
                 returnKeyType="next"
               />
 
-
-              <Text style={[styles.fieldLabel, { color: c.subtext, marginTop: 14 }]}>
+              <Text
+                style={[styles.fieldLabel, { color: c.subtext, marginTop: 14 }]}
+              >
                 Total Pills to Load
               </Text>
               <TextInput
                 style={[
                   styles.fieldInput,
-                  { color: c.text, borderBottomColor: stockFocused ? c.primary : c.border },
+                  {
+                    color: c.text,
+                    borderBottomColor: stockFocused ? c.primary : c.border,
+                  },
                 ]}
                 placeholder="e.g. 30"
                 placeholderTextColor={c.muted}
@@ -178,14 +221,17 @@ export default function AddPillScreen({ navigation }: Props) {
                 onFocus={() => setStockFocused(true)}
                 onBlur={() => setStockFocused(false)}
               />
-
             </View>
 
             <Text style={[styles.sectionLabel, { color: c.muted }]}>
               Start Date
             </Text>
-            <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
-
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: c.card, borderColor: c.border },
+              ]}
+            >
               <TouchableOpacity
                 style={styles.dateRow}
                 onPress={() => {
@@ -194,15 +240,18 @@ export default function AddPillScreen({ navigation }: Props) {
                     setDatePickerVisible(true);
                   }
                 }}
-                activeOpacity={isFromToday ? 1 : 0.7}>
+                activeOpacity={isFromToday ? 1 : 0.7}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.fieldLabel, { color: c.subtext }]}>
                     Begin course on
                   </Text>
-                  <Text style={[
-                    styles.dateValue,
-                    { color: isFromToday ? c.muted : c.text },
-                  ]}>
+                  <Text
+                    style={[
+                      styles.dateValue,
+                      { color: isFromToday ? c.muted : c.text },
+                    ]}
+                  >
                     {isFromToday
                       ? `Today — ${formatDate(new Date())}`
                       : startDate
@@ -223,21 +272,25 @@ export default function AddPillScreen({ navigation }: Props) {
                   if (!isFromToday) setStartDate(null);
                   setIsFromToday(v => !v);
                 }}
-                activeOpacity={0.7}>
-                <View style={[
-                  styles.checkbox,
-                  {
-                    borderColor: isFromToday ? c.primary : c.border,
-                    backgroundColor: isFromToday ? c.primary : 'transparent',
-                  },
-                ]}>
-                  {isFromToday && <Check size={12} color="#fff" strokeWidth={3} />}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    {
+                      borderColor: isFromToday ? c.primary : c.border,
+                      backgroundColor: isFromToday ? c.primary : 'transparent',
+                    },
+                  ]}
+                >
+                  {isFromToday && (
+                    <Check size={12} color="#fff" strokeWidth={3} />
+                  )}
                 </View>
                 <Text style={[styles.checkLabel, { color: c.text }]}>
                   Start from today
                 </Text>
               </TouchableOpacity>
-
             </View>
 
             <View style={styles.scheduleHeader}>
@@ -247,7 +300,8 @@ export default function AddPillScreen({ navigation }: Props) {
               <TouchableOpacity
                 style={[styles.addTimeBtn, { backgroundColor: c.primary }]}
                 onPress={openAddTime}
-                activeOpacity={0.8}>
+                activeOpacity={0.8}
+              >
                 <Plus size={14} color="#fff" strokeWidth={2.5} />
                 <Text style={styles.addTimeBtnText}>Add Time</Text>
               </TouchableOpacity>
@@ -267,18 +321,30 @@ export default function AddPillScreen({ navigation }: Props) {
               schedule.map((time, index) => (
                 <View
                   key={index}
-                  style={[styles.timeCard, { backgroundColor: c.card, borderColor: c.border }]}>
-                  <View style={[styles.timeIconWrap, { backgroundColor: c.primary + '18' }]}>
+                  style={[
+                    styles.timeCard,
+                    { backgroundColor: c.card, borderColor: c.border },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.timeIconWrap,
+                      { backgroundColor: c.primary + '18' },
+                    ]}
+                  >
                     <Clock size={16} color={c.primary} strokeWidth={2} />
                   </View>
                   <TouchableOpacity
                     style={styles.timeInfo}
                     onPress={() => openEditTime(index)}
-                    activeOpacity={0.7}>
+                    activeOpacity={0.7}
+                  >
                     <Text style={[styles.timeValue, { color: c.text }]}>
                       {formatTime(time)}
                     </Text>
-                    <View style={[styles.editChip, { backgroundColor: c.inputBg }]}>
+                    <View
+                      style={[styles.editChip, { backgroundColor: c.inputBg }]}
+                    >
                       <Pencil size={10} color={c.muted} strokeWidth={2} />
                       <Text style={[styles.editChipText, { color: c.muted }]}>
                         Edit
@@ -287,7 +353,8 @@ export default function AddPillScreen({ navigation }: Props) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => removeTime(index)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
                     <X size={18} color={c.danger} strokeWidth={2.5} />
                   </TouchableOpacity>
                 </View>
@@ -298,7 +365,12 @@ export default function AddPillScreen({ navigation }: Props) {
           </ScrollView>
         </TouchableWithoutFeedback>
 
-        <View style={[styles.footer, { backgroundColor: c.background, borderTopColor: c.border }]}>
+        <View
+          style={[
+            styles.footer,
+            { backgroundColor: c.background, borderTopColor: c.border },
+          ]}
+        >
           <TouchableOpacity
             style={[
               styles.saveBtn,
@@ -306,18 +378,27 @@ export default function AddPillScreen({ navigation }: Props) {
             ]}
             onPress={handleSave}
             activeOpacity={isFormValid ? 0.8 : 1}
-            disabled={!isFormValid}>
-            <CheckCircle2
-              size={18}
-              color={isFormValid ? '#fff' : c.muted}
-              strokeWidth={2}
-            />
-            <Text style={[
-              styles.saveBtnText,
-              { color: isFormValid ? '#fff' : c.muted },
-            ]}>
-              Confirm & Add Medication
-            </Text>
+            disabled={!isFormValid || isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <CheckCircle2
+                  size={18}
+                  color={isFormValid ? '#fff' : c.muted}
+                  strokeWidth={2}
+                />
+                <Text
+                  style={[
+                    styles.saveBtnText,
+                    { color: isFormValid ? '#fff' : c.muted },
+                  ]}
+                >
+                  Confirm & Add Medication
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -326,7 +407,8 @@ export default function AddPillScreen({ navigation }: Props) {
         visible={timePickerVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setTimePickerVisible(false)}>
+        onRequestClose={() => setTimePickerVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.sheet, { backgroundColor: c.card }]}>
             <View style={[styles.sheetHandle, { backgroundColor: c.border }]} />
@@ -338,7 +420,9 @@ export default function AddPillScreen({ navigation }: Props) {
               mode="time"
               is24Hour={false}
               display="spinner"
-              onChange={(_e: DateTimePickerEvent, d?: Date) => d && setTempTime(d)}
+              onChange={(_e: DateTimePickerEvent, d?: Date) =>
+                d && setTempTime(d)
+              }
               textColor={c.text}
               style={{ alignSelf: 'center' }}
             />
@@ -346,13 +430,17 @@ export default function AddPillScreen({ navigation }: Props) {
               <TouchableOpacity
                 style={[styles.cancelBtn, { borderColor: c.border }]}
                 onPress={() => setTimePickerVisible(false)}
-                activeOpacity={0.7}>
-                <Text style={[styles.cancelText, { color: c.danger }]}>Cancel</Text>
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.cancelText, { color: c.danger }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmBtn, { backgroundColor: c.primary }]}
                 onPress={finalizeTime}
-                activeOpacity={0.8}>
+                activeOpacity={0.8}
+              >
                 <Text style={styles.confirmText}>Confirm</Text>
               </TouchableOpacity>
             </View>
@@ -364,7 +452,8 @@ export default function AddPillScreen({ navigation }: Props) {
         visible={datePickerVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setDatePickerVisible(false)}>
+        onRequestClose={() => setDatePickerVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.sheet, { backgroundColor: c.card }]}>
             <View style={[styles.sheetHandle, { backgroundColor: c.border }]} />
@@ -376,7 +465,9 @@ export default function AddPillScreen({ navigation }: Props) {
               mode="date"
               display="spinner"
               minimumDate={new Date()}
-              onChange={(_e: DateTimePickerEvent, d?: Date) => d && setTempDate(d)}
+              onChange={(_e: DateTimePickerEvent, d?: Date) =>
+                d && setTempDate(d)
+              }
               textColor={c.text}
               style={{ alignSelf: 'center' }}
             />
@@ -384,8 +475,11 @@ export default function AddPillScreen({ navigation }: Props) {
               <TouchableOpacity
                 style={[styles.cancelBtn, { borderColor: c.border }]}
                 onPress={() => setDatePickerVisible(false)}
-                activeOpacity={0.7}>
-                <Text style={[styles.cancelText, { color: c.danger }]}>Cancel</Text>
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.cancelText, { color: c.danger }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.confirmBtn, { backgroundColor: c.primary }]}
@@ -393,7 +487,8 @@ export default function AddPillScreen({ navigation }: Props) {
                   setStartDate(tempDate);
                   setDatePickerVisible(false);
                 }}
-                activeOpacity={0.8}>
+                activeOpacity={0.8}
+              >
                 <Text style={styles.confirmText}>Confirm</Text>
               </TouchableOpacity>
             </View>
