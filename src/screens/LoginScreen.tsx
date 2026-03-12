@@ -45,7 +45,6 @@ export default function LoginScreen({ navigation }: Props) {
       setLoading(true);
   
       await login(dispenserEmail, password);
-      navigation.replace("MainTabs")
     } catch (error: any) {
       console.error('Login error:', error.message);
       Alert.alert('Login Failed', error?.message || 'An unexpected error occurred. Please try again.');
