@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
-import { addMedicationToFirestore } from '../services/firestore';
-import { scheduleMedicationNotifications } from '../services/notificationService';
-import { MedicationSchedule } from '../types';
+import { addMedicationToFirestore, updateMedication } from '../services/firestore';
+import { cancelMedicationNotifications, scheduleMedicationNotifications } from '../services/notificationService';
+import { Medicine, MedicationSchedule } from '../types';
 
 function formatTime(date: Date): string {
   let h = date.getHours();
@@ -12,12 +12,36 @@ function formatTime(date: Date): string {
   return `${h}:${m < 10 ? '0' + m : m} ${ampm}`;
 }
 
-export function useAddPillForm(onSuccess: () => void) {
-  const [name, setName] = useState('');
-  const [totalStock, setTotalStock] = useState('');
-  const [schedule, setSchedule] = useState<Date[]>([]);
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [isFromToday, setIsFromToday] = useState(true);
+function scheduleToDate(slot: MedicationSchedule): Date {
+  const d = new Date();
+  d.setHours(slot.hour, slot.minute, 0, 0);
+  return d;
+}
+
+function firestoreTimestampToDate(value: any): Date {
+  if (value?.seconds) return new Date(value.seconds * 1000);
+  return new Date(value);
+}
+
+interface UseAddPillFormOptions {
+  existing?: Medicine;
+  onSuccess: () => any;
+}
+
+export function useAddPillForm({ existing, onSuccess }: UseAddPillFormOptions = {} as any) {
+  const isEditMode = !!existing;
+
+  const [name, setName] = useState(existing?.name ?? '');
+  const [totalStock, setTotalStock] = useState(
+    existing ? String(existing.stock.total) : '',
+  );
+  const [schedule, setSchedule] = useState<Date[]>(
+    existing ? existing.schedule.map(scheduleToDate) : [],
+  );
+  const [startDate, setStartDate] = useState<Date | null>(
+    existing ? firestoreTimestampToDate(existing.startDate) : null,
+  );
+  const [isFromToday, setIsFromToday] = useState(isEditMode ? false : true);
   const [isSaving, setIsSaving] = useState(false);
 
   const isFormValid =
@@ -26,21 +50,17 @@ export function useAddPillForm(onSuccess: () => void) {
     schedule.length > 0 &&
     (isFromToday || startDate !== null);
 
-  const addScheduleTime = (date: Date) => {
-    setSchedule(prev => [...prev, date]);
-  };
+  const addScheduleTime = (date: Date) => setSchedule(prev => [...prev, date]);
 
-  const editScheduleTime = (index: number, date: Date) => {
+  const editScheduleTime = (index: number, date: Date) =>
     setSchedule(prev => {
       const updated = [...prev];
       updated[index] = date;
       return updated;
     });
-  };
 
-  const removeScheduleTime = (index: number) => {
+  const removeScheduleTime = (index: number) =>
     setSchedule(prev => prev.filter((_, i) => i !== index));
-  };
 
   const toggleStartFromToday = () => {
     if (!isFromToday) setStartDate(null);
@@ -49,7 +69,6 @@ export function useAddPillForm(onSuccess: () => void) {
 
   const handleSave = () => {
     if (!isFormValid) return;
-
     setIsSaving(true);
 
     const finalStartDate = isFromToday ? new Date() : startDate || new Date();
@@ -59,28 +78,54 @@ export function useAddPillForm(onSuccess: () => void) {
       formatted: formatTime(d),
     }));
 
-    addMedicationToFirestore({
-      name: name.trim(),
-      totalStock: parseInt(totalStock, 10),
-      startDate: finalStartDate,
-      isFromToday,
-      schedule: scheduleSlots,
-    })
-      .then(ref => {
-        if (ref) {
-          scheduleMedicationNotifications(ref.id, name.trim(), scheduleSlots);
-        }
-        setIsSaving(false);
-        onSuccess();
+    if (isEditMode && existing) {
+      updateMedication(existing.id, {
+        name: name.trim(),
+        totalStock: parseInt(totalStock, 10),
+        startDate: finalStartDate,
+        isFromToday,
+        schedule: scheduleSlots,
       })
-      .catch(err => {
-        console.error('Save error:', err);
-        setIsSaving(false);
-        Alert.alert('Save Failed', 'Could not save medication. Please check your connection.');
-      });
+        .then(async success => {
+          if (success) {
+            await cancelMedicationNotifications(existing.id, existing.schedule);
+            await scheduleMedicationNotifications(existing.id, name.trim(), scheduleSlots);
+            setIsSaving(false);
+            onSuccess();
+          } else {
+            throw new Error('Update returned false');
+          }
+        })
+        .catch(err => {
+          console.error('Update error:', err);
+          setIsSaving(false);
+          Alert.alert('Update Failed', 'Could not update medication. Please try again.');
+        });
+    } else {
+      addMedicationToFirestore({
+        name: name.trim(),
+        totalStock: parseInt(totalStock, 10),
+        startDate: finalStartDate,
+        isFromToday,
+        schedule: scheduleSlots,
+      })
+        .then(ref => {
+          if (ref) {
+            scheduleMedicationNotifications(ref.id, name.trim(), scheduleSlots);
+          }
+          setIsSaving(false);
+          onSuccess();
+        })
+        .catch(err => {
+          console.error('Save error:', err);
+          setIsSaving(false);
+          Alert.alert('Save Failed', 'Could not save medication. Please check your connection.');
+        });
+    }
   };
 
   return {
+    isEditMode,
     name, setName,
     totalStock, setTotalStock,
     schedule,

@@ -6,7 +6,7 @@ import notifee, {
   AuthorizationStatus,
 } from '@notifee/react-native';
 import { Platform } from 'react-native';
-import { MedicationSchedule } from './firestore';
+import { MedicationSchedule } from '../types';
 
 const CHANNEL_ID = 'medication_reminders';
 
