@@ -1,10 +1,11 @@
 import React from 'react';
 import { useColorScheme } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { LayoutDashboard } from 'lucide-react-native';
+import { LayoutDashboard, User } from 'lucide-react-native';
 import { light, dark } from '../constants/colors';
 import DashboardScreen from '../screens/DashboardScreen';
 import { TabParamList } from '../types';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
@@ -36,6 +37,16 @@ export default function MainTabs() {
           tabBarLabel: 'Dashboard',
           tabBarIcon: ({ color, size }) => (
             <LayoutDashboard size={size} color={color} strokeWidth={2} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <User size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
