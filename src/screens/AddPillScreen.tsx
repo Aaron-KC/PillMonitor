@@ -34,6 +34,7 @@ import {
   addMedicationToFirestore,
   MedicationData,
 } from '../services/firestore';
+import { scheduleMedicationNotifications } from '../services/notificationService';
 
 type Props = {
   navigation: any;
@@ -57,7 +58,7 @@ function formatDate(date: Date): string {
 
 export default function AddPillScreen({ navigation }: Props) {
   const scheme = useColorScheme();
-  const c = scheme === 'dark' ? light : dark; // Intentionally inverted for better aesthetics
+  const c = scheme === 'dark' ? light : dark;
 
   const [name, setName] = useState('');
   const [totalStock, setTotalStock] = useState('');
@@ -90,20 +91,44 @@ export default function AddPillScreen({ navigation }: Props) {
     setTimePickerVisible(true);
   };
 
-  const finalizeTime = () => {
+  const finalizeTime = (dateToUse?: Date) => {
+    const t = dateToUse ?? tempTime;
     if (pickerMode === 'add') {
-      setSchedule(prev => [...prev, tempTime]);
+      setSchedule(prev => [...prev, t]);
     } else if (pickerMode === 'edit' && selectedIndex !== null) {
       const updated = [...schedule];
-      updated[selectedIndex] = tempTime;
+      updated[selectedIndex] = t;
       setSchedule(updated);
     }
     setTimePickerVisible(false);
   };
 
+  const handleTimeChange = (e: DateTimePickerEvent, d?: Date) => {
+    if (Platform.OS === 'android') {
+      setTimePickerVisible(false);
+      if (e.type === 'dismissed' || !d) return;
+      finalizeTime(d);
+    } else {
+      if (!d) return;
+      setTempTime(d);
+    }
+  };
+
+  const handleDateChange = (e: DateTimePickerEvent, d?: Date) => {
+    if (Platform.OS === 'android') {
+      setDatePickerVisible(false);
+      if (e.type === 'dismissed' || !d) return;
+      setStartDate(d);
+    } else {
+      if (!d) return;
+      setTempDate(d);
+    }
+  };
+
   const removeTime = (index: number) => {
     setSchedule(prev => prev.filter((_, i) => i !== index));
   };
+
   const isFormValid =
     name.trim().length > 0 &&
     totalStock.trim().length > 0 &&
@@ -118,31 +143,42 @@ export default function AddPillScreen({ navigation }: Props) {
     try {
       const finalStartDate = isFromToday ? new Date() : startDate || new Date();
 
+      const scheduleSlots = schedule.map(d => ({
+        hour: d.getHours(),
+        minute: d.getMinutes(),
+        formatted: formatTime(d),
+      }));
+
       const pillData: MedicationData = {
         name: name.trim(),
         totalStock: parseInt(totalStock, 10),
         startDate: finalStartDate,
         isFromToday,
-        schedule: schedule.map(d => ({
-          hour: d.getHours(),
-          minute: d.getMinutes(), 
-          formatted: formatTime(d),
-        })),
+        schedule: scheduleSlots,
       };
 
-      console.log(pillData);
+      addMedicationToFirestore(pillData)
+        .then(ref => {
+          if (ref) {
+            scheduleMedicationNotifications(
+              ref.id,
+              name.trim(),
+              scheduleSlots,
+            );
+          }
+          console.log(ref)
+          setIsSaving(false);
+          navigation.navigate('MainTabs');
+        })
+        .catch(err => console.error('Save/notification error:', err));
 
-      await addMedicationToFirestore(pillData);
-
-      navigation.goBack();
     } catch (error: any) {
       console.error(error);
+      setIsSaving(false);
       Alert.alert(
         'Save Failed',
         'Could not save medication. Please check your connection.',
       );
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -403,98 +439,120 @@ export default function AddPillScreen({ navigation }: Props) {
         </View>
       </KeyboardAvoidingView>
 
-      <Modal
-        visible={timePickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setTimePickerVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.sheet, { backgroundColor: c.card }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: c.border }]} />
-            <Text style={[styles.sheetTitle, { color: c.text }]}>
-              {pickerMode === 'add' ? 'Add Dose Time' : 'Edit Dose Time'}
-            </Text>
-            <DateTimePicker
-              value={tempTime}
-              mode="time"
-              is24Hour={false}
-              display="spinner"
-              onChange={(_e: DateTimePickerEvent, d?: Date) =>
-                d && setTempTime(d)
-              }
-              textColor={c.text}
-              style={{ alignSelf: 'center' }}
-            />
-            <View style={styles.sheetActions}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, { borderColor: c.border }]}
-                onPress={() => setTimePickerVisible(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.cancelText, { color: c.danger }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.confirmBtn, { backgroundColor: c.primary }]}
-                onPress={finalizeTime}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmText}>Confirm</Text>
-              </TouchableOpacity>
+      {Platform.OS === 'android' ? (
+        // Android: render naked picker (no modal), it shows as a native dialog
+        timePickerVisible && (
+          <DateTimePicker
+            value={tempTime}
+            mode="time"
+            is24Hour={false}
+            display="default"
+            onChange={handleTimeChange}
+          />
+        )
+      ) : (
+        // iOS: keep the bottom-sheet modal
+        <Modal
+          visible={timePickerVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setTimePickerVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.sheet, { backgroundColor: c.card }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: c.border }]} />
+              <Text style={[styles.sheetTitle, { color: c.text }]}>
+                {pickerMode === 'add' ? 'Add Dose Time' : 'Edit Dose Time'}
+              </Text>
+              <DateTimePicker
+                value={tempTime}
+                mode="time"
+                is24Hour={false}
+                display="spinner"
+                onChange={handleTimeChange}
+                textColor={c.text}
+                style={{ alignSelf: 'center' }}
+              />
+              <View style={styles.sheetActions}>
+                <TouchableOpacity
+                  style={[styles.cancelBtn, { borderColor: c.border }]}
+                  onPress={() => setTimePickerVisible(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.cancelText, { color: c.danger }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, { backgroundColor: c.primary }]}
+                  onPress={() => finalizeTime()}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.confirmText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
-      <Modal
-        visible={datePickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDatePickerVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.sheet, { backgroundColor: c.card }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: c.border }]} />
-            <Text style={[styles.sheetTitle, { color: c.text }]}>
-              Select Start Date
-            </Text>
-            <DateTimePicker
-              value={tempDate}
-              mode="date"
-              display="spinner"
-              minimumDate={new Date()}
-              onChange={(_e: DateTimePickerEvent, d?: Date) =>
-                d && setTempDate(d)
-              }
-              textColor={c.text}
-              style={{ alignSelf: 'center' }}
-            />
-            <View style={styles.sheetActions}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, { borderColor: c.border }]}
-                onPress={() => setDatePickerVisible(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.cancelText, { color: c.danger }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.confirmBtn, { backgroundColor: c.primary }]}
-                onPress={() => {
-                  setStartDate(tempDate);
-                  setDatePickerVisible(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmText}>Confirm</Text>
-              </TouchableOpacity>
+      {Platform.OS === 'android' ? (
+        datePickerVisible && (
+          <DateTimePicker
+            value={tempDate}
+            mode="date"
+            display="default"
+            minimumDate={new Date()}
+            onChange={handleDateChange}
+          />
+        )
+      ) : (
+        <Modal
+          visible={datePickerVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setDatePickerVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.sheet, { backgroundColor: c.card }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: c.border }]} />
+              <Text style={[styles.sheetTitle, { color: c.text }]}>
+                Select Start Date
+              </Text>
+              <DateTimePicker
+                value={tempDate}
+                mode="date"
+                display="spinner"
+                minimumDate={new Date()}
+                onChange={handleDateChange}
+                textColor={c.text}
+                style={{ alignSelf: 'center' }}
+              />
+              <View style={styles.sheetActions}>
+                <TouchableOpacity
+                  style={[styles.cancelBtn, { borderColor: c.border }]}
+                  onPress={() => setDatePickerVisible(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.cancelText, { color: c.danger }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, { backgroundColor: c.primary }]}
+                  onPress={() => {
+                    setStartDate(tempDate);
+                    setDatePickerVisible(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.confirmText}>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }

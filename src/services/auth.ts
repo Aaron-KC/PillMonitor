@@ -4,6 +4,7 @@ export const login = async (email: string, password: string): Promise<void> => {
   try {
     await auth().signInWithEmailAndPassword(email, password);
   } catch (error: any) {
+    console.error(error)
     switch (error.code) {
       case 'auth/invalid-email':
         throw new Error('That email address is invalid.');
