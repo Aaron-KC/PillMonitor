@@ -1,7 +1,8 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import MainTabs from '../tabs/MainTabs'
+import MainTabs from '../tabs/MainTabs';
 import AddPillScreen from '../screens/AddPillScreen';
+import EditPillScreen from '../screens/EditPillScreen';
 import { AppStackParamList } from '../types';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -13,6 +14,11 @@ export default function AppStack() {
       <Stack.Screen
         name="AddPill"
         component={AddPillScreen}
+        options={{ presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="EditPill"
+        component={EditPillScreen}
         options={{ presentation: 'modal' }}
       />
     </Stack.Navigator>

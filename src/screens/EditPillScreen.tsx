@@ -21,9 +21,11 @@ import {
 } from 'lucide-react-native';
 import { light, dark } from '../constants/colors';
 import { useAddPillForm } from '../hooks/useAddPillForm';
+import { Medicine } from '../types';
 
 type Props = {
   navigation: any;
+  route: { params: { medication: Medicine } };
 };
 
 function formatTime(date: Date): string {
@@ -40,7 +42,8 @@ function formatDate(date: Date): string {
   });
 }
 
-export default function AddPillScreen({ navigation }: Props) {
+export default function EditPillScreen({ navigation, route }: Props) {
+  const { medication } = route.params;
   const scheme = useColorScheme();
   const c = scheme === 'dark' ? light : dark;
 
@@ -57,7 +60,10 @@ export default function AddPillScreen({ navigation }: Props) {
     removeScheduleTime,
     toggleStartFromToday,
     handleSave,
-  } = useAddPillForm({onSuccess: () => navigation.navigate("MainTabs")});
+  } = useAddPillForm({
+    existing: medication,
+    onSuccess: () => navigation.goBack(),
+  });
 
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -125,7 +131,7 @@ export default function AddPillScreen({ navigation }: Props) {
           <ChevronLeft size={22} color={c.primary} strokeWidth={2.5} />
           <Text style={[styles.backText, { color: c.primary }]}>Back</Text>
         </TouchableOpacity>
-        <Text style={[styles.navTitle, { color: c.text }]}>Add Medication</Text>
+        <Text style={[styles.navTitle, { color: c.text }]}>Edit Medication</Text>
         <View style={{ width: 64 }} />
       </View>
 
@@ -253,7 +259,7 @@ export default function AddPillScreen({ navigation }: Props) {
               <>
                 <CheckCircle2 size={18} color={isFormValid ? '#fff' : c.muted} strokeWidth={2} />
                 <Text style={[styles.saveBtnText, { color: isFormValid ? '#fff' : c.muted }]}>
-                  Confirm & Add Medication
+                  Save Changes
                 </Text>
               </>
             )}
@@ -275,10 +281,10 @@ export default function AddPillScreen({ navigation }: Props) {
               </Text>
               <DateTimePicker value={tempTime} mode="time" is24Hour={false} display="spinner" onChange={handleTimeChange} textColor={c.text} style={{ alignSelf: 'center' }} />
               <View style={styles.sheetActions}>
-                <TouchableOpacity style={[styles.cancelBtn, { borderColor: c.border }]} onPress={() => setTimePickerVisible(false)} activeOpacity={0.7}>
+                <TouchableOpacity style={[styles.cancelBtn, { borderColor: c.border }]} onPress={() => setTimePickerVisible(false)}>
                   <Text style={[styles.cancelText, { color: c.danger }]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: c.primary }]} onPress={() => finalizeTime()} activeOpacity={0.8}>
+                <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: c.primary }]} onPress={() => finalizeTime()}>
                   <Text style={styles.confirmText}>Confirm</Text>
                 </TouchableOpacity>
               </View>
@@ -299,10 +305,10 @@ export default function AddPillScreen({ navigation }: Props) {
               <Text style={[styles.sheetTitle, { color: c.text }]}>Select Start Date</Text>
               <DateTimePicker value={tempDate} mode="date" display="spinner" minimumDate={new Date()} onChange={handleDateChange} textColor={c.text} style={{ alignSelf: 'center' }} />
               <View style={styles.sheetActions}>
-                <TouchableOpacity style={[styles.cancelBtn, { borderColor: c.border }]} onPress={() => setDatePickerVisible(false)} activeOpacity={0.7}>
+                <TouchableOpacity style={[styles.cancelBtn, { borderColor: c.border }]} onPress={() => setDatePickerVisible(false)}>
                   <Text style={[styles.cancelText, { color: c.danger }]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: c.primary }]} onPress={() => { setStartDate(tempDate); setDatePickerVisible(false); }} activeOpacity={0.8}>
+                <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: c.primary }]} onPress={() => { setStartDate(tempDate); setDatePickerVisible(false); }}>
                   <Text style={styles.confirmText}>Confirm</Text>
                 </TouchableOpacity>
               </View>

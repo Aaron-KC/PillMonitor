@@ -1,11 +1,21 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Clock, AlertTriangle, Activity, CalendarClock } from 'lucide-react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { Clock, AlertTriangle, Activity, CalendarClock, Pencil, Trash2 } from 'lucide-react-native';
 import { Medicine } from '../types';
+import { deleteMedication } from '../services/firestore';
+import { cancelMedicationNotifications } from '../services/notificationService';
 
 type Props = {
   med: Medicine;
   c: any;
+  onEdit: (med: Medicine) => void;
 };
 
 function getEffectiveStatus(startDate: any) {
@@ -24,28 +34,74 @@ function getEffectiveStatus(startDate: any) {
     });
     return { label: `Starts ${formatted}`, active: false };
   }
-
   return { label: 'Active Course', active: true };
 }
 
-export function MedCard({ med, c }: Props) {
+export function MedCard({ med, c, onEdit }: Props) {
   const status = getEffectiveStatus(med.startDate);
   const ratio = med.stock.remaining / med.stock.total;
   const isLow = ratio < 0.3;
   const barColor = isLow ? c.danger : c.primary;
   const pct = Math.round(ratio * 100);
+  
+  const [deleting, setDeleting] = React.useState(false);
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Medication',
+      `Remove "${med.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await cancelMedicationNotifications(med.id, med.schedule);
+              await deleteMedication(med.id);
+            } catch (error) {
+              Alert.alert("Error", "Could not delete medication");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
-      <View style={styles.statusHeader}>
-        {status.active ? (
-          <Activity size={12} color={c.success} strokeWidth={2.5} />
-        ) : (
-          <CalendarClock size={12} color="#D97706" strokeWidth={2.5} />
-        )}
-        <Text style={[styles.statusText, { color: status.active ? c.success : '#D97706' }]}>
-          {status.label}
-        </Text>
+      
+      <View style={styles.headerRow}>
+        <View style={styles.statusHeader}>
+          {status.active
+            ? <Activity size={12} color={c.success} strokeWidth={2.5} />
+            : <CalendarClock size={12} color="#D97706" strokeWidth={2.5} />}
+          <Text style={[styles.statusText, { color: status.active ? c.success : '#D97706' }]}>
+            {status.label}
+          </Text>
+        </View>
+
+        <View style={styles.inlineActions}>
+          <TouchableOpacity 
+            onPress={() => onEdit(med)} 
+            style={[styles.miniActionBtn, { backgroundColor: c.primary + '15' }]}
+          >
+            <Pencil size={14} color={c.primary} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={handleDelete} 
+            disabled={deleting}
+            style={[styles.miniActionBtn, { backgroundColor: c.danger + '15' }]}
+          >
+            {deleting 
+              ? <ActivityIndicator size="small" color={c.danger} /> 
+              : <Trash2 size={14} color={c.danger} />}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.topRow}>
@@ -105,13 +161,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 12,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   statusHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    alignSelf: 'flex-start',
+    paddingVertical: 4,
     borderRadius: 6,
     backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  inlineActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  miniActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statusText: {
     fontSize: 10,
@@ -167,9 +239,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  divider: {
-    height: 1,
-  },
+  divider: { height: 1 },
   bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',

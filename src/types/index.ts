@@ -41,6 +41,7 @@ export type AuthStackParamList = {
 export type AppStackParamList = {
   MainTabs: undefined;
   AddPill: undefined;
+  EditPill: { medication: Medicine };
 };
 
 export type TabParamList = {

@@ -94,7 +94,7 @@ export default function DashboardScreen({ navigation }: Props) {
         <Text style={[styles.sectionLabel, { color: c.muted }]}>Active Medications</Text>
 
         {medicines.length > 0
-          ? medicines.map(med => <MedCard key={med.id} med={med} c={c} />)
+          ? medicines.map(med => <MedCard key={med.id} med={med} c={c} onEdit={() => navigation.navigate("EditPill", {medication: med})}/>)
           : !loading && (
               <Text style={[styles.emptyText, { color: c.muted }]}>
                 No medications added yet.

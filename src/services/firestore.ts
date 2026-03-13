@@ -1,73 +1,86 @@
 import firestore from '@react-native-firebase/firestore';
 import { getAuth } from '@react-native-firebase/auth';
+import { MedicationData, Medicine } from '../types';
 
-export interface MedicationSchedule {
-  hour: number;
-  minute: number;
-  formatted: string;
-}
-
-export interface MedicationData {
-  name: string;
-  totalStock: number;
-  startDate: Date;
-  isFromToday: boolean;
-  schedule: MedicationSchedule[];
-}
-
-export const addMedicationToFirestore = async (data: MedicationData) => {
+function getMedicationsRef() {
   const user = getAuth().currentUser;
-
-  if (!user) throw new Error('AUTH_REQUIRED');
-
-  const medicationsRef = firestore()
-    .collection('users')
-    .doc(user.uid)
-    .collection('medications');
-
-  const res = await medicationsRef.add({
-    name: data.name,
-    stock: {
-      total: data.totalStock,
-      remaining: data.totalStock,
-    },
-    schedule: data.schedule,
-    startDate: firestore.Timestamp.fromDate(data.startDate),
-    createdAt: firestore.Timestamp.now(),
-    isActive: true,
-  });
-
-  return res;
-};
-
-export const subscribeToMedications = (
-  onUpdate: (data: any[]) => void,
-  onError: (error: Error) => void
-) => {
-  const user = getAuth().currentUser;
-
-  if (!user) {
-    onError(new Error('AUTH_REQUIRED'));
-    return () => {};
-  }
-
+  if (!user) throw new Error('Not authenticated');
   return firestore()
     .collection('users')
     .doc(user.uid)
-    .collection('medications')
-    .orderBy('createdAt', 'desc')
-    .onSnapshot(
-      querySnapshot => {
-        if (!querySnapshot) return;
-        const meds = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        onUpdate(meds);
+    .collection('medications');
+}
+
+export async function addMedicationToFirestore(data: MedicationData) {
+  try {
+    const ref = getMedicationsRef().doc();
+    await ref.set({
+      name: data.name,
+      stock: {
+        total: data.totalStock,
+        remaining: data.totalStock,
       },
-      error => {
-        console.error('Firestore Streaming Error:', error);
-        onError(error);
-      }
-    );
-};
+      schedule: data.schedule,
+      startDate: firestore.Timestamp.fromDate(data.startDate),
+      isFromToday: data.isFromToday,
+      isActive: true,
+      createdAt: firestore.Timestamp.now(),
+    });
+    return ref;
+  } catch (error) {
+    console.error('addMedicationToFirestore error:', error);
+    return null;
+  }
+}
+
+export function subscribeToMedications(
+  onData: (meds: Medicine[]) => void,
+  onError: (error: Error) => void,
+) {
+  const ref = getMedicationsRef().orderBy('createdAt', 'desc');
+
+  return ref.onSnapshot(
+    snapshot => {
+      const meds = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Medicine[];
+      onData(meds);
+    },
+    error => onError(error),
+  );
+}
+
+export async function updateMedication(
+  medicationId: string,
+  data: Partial<MedicationData>,
+): Promise<boolean> {
+  try {
+    const updatePayload: Record<string, any> = {};
+
+    if (data.name !== undefined) updatePayload.name = data.name;
+    if (data.schedule !== undefined) updatePayload.schedule = data.schedule;
+    if (data.startDate !== undefined) {
+      updatePayload.startDate = firestore.Timestamp.fromDate(data.startDate);
+    }
+    if (data.isFromToday !== undefined) updatePayload.isFromToday = data.isFromToday;
+    if (data.totalStock !== undefined) {
+      updatePayload['stock.total'] = data.totalStock;
+    }
+
+    await getMedicationsRef().doc(medicationId).update(updatePayload);
+    return true;
+  } catch (error) {
+    console.error('updateMedication error:', error);
+    return false;
+  }
+}
+export async function deleteMedication(medicationId: string): Promise<boolean> {
+  try {
+    await getMedicationsRef().doc(medicationId).delete();
+    return true;
+  } catch (error) {
+    console.error('deleteMedication error:', error);
+    return false;
+  }
+}
