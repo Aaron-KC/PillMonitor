@@ -46,6 +46,7 @@ export type AppStackParamList = {
 
 export type TabParamList = {
   Dashboard: undefined;
+  Profile: undefined;
 };
 
 export type RootStackParamList = AuthStackParamList & AppStackParamList;
