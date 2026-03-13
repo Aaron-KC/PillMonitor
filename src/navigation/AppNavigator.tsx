@@ -55,6 +55,8 @@ export default function AppNavigator() {
   const scheme = useColorScheme();
   const c = scheme === 'dark' ? light : dark;
 
+  console.log(user, initializing)
+
   if (initializing) {
     return (
       <View
@@ -79,13 +81,18 @@ export default function AppNavigator() {
           contentStyle: { backgroundColor: c.background },
         }}
       >
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="MainTabs" component={MainTabs} />
-        <Stack.Screen
-          name="AddPill"
-          component={AddPillScreen}
-          options={{ presentation: 'modal' }}
-        />
+        {
+          user ? <>
+          <Stack.Screen name="MainTabs" component={MainTabs} />
+          <Stack.Screen
+            name="AddPill"
+            component={AddPillScreen}
+            options={{ presentation: 'modal' }}
+          />
+          </>
+          :
+          <Stack.Screen name="Login" component={LoginScreen} />
+        }
       </Stack.Navigator>
     </NavigationContainer>
   );
